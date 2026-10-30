@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>弹球打砖块</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            position: relative;
+            width: 480px;
+            height: 640px;
+        }
+        canvas {
+            width: 480px;
+            height: 640px;
+            border-radius: 16px;
+            display: block;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 480px;
+            height: 640px;
+            border-radius: 16px;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        .overlay.hidden { display: none; }
+        .hud {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            right: 16px;
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            pointer-events: none;
+        }
+        .hud.hidden { display: none; }
+        .hud-item {
+            background: rgba(0,0,0,0.4);
+            padding: 8px 16px;
+            border-radius: 20px;
+        }
+        h1 { font-size: 48px; margin-bottom: 12px; font-weight: 900; }
+        .subtitle { font-size: 18px; opacity: 0.8; margin-bottom: 24px; }
+        .info-card {
+            background: rgba(255,255,255,0.1);
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 32px;
+            line-height: 2;
+            font-size: 15px;
+            width: 320px;
+        }
+        .info-card h3 { font-size: 20px; margin-bottom: 8px; }
+        button {
+            padding: 16px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: transform 0.2s;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        }
+        button:hover { transform: translateY(-2px); }
+        .btn-start { background: linear-gradient(135deg, #fbbf24, #f97316); }
+        .btn-restart { background: linear-gradient(135deg, #4ade80, #10b981); }
+        .btn-win { background: linear-gradient(135deg, #60a5fa, #a78bfa); }
+        .final-score {
+            font-size: 56px;
+            font-weight: 900;
+            color: #facc15;
+            margin-bottom: 32px;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeInUp 0.5s ease-out forwards; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="gameCanvas" width="480" height="640"></canvas>
+        
+        <div id="startScreen" class="overlay">
+            <div class="fade-in" style="text-align:center">
+            <h1>🎮 弹球打砖块</h1>
+            <p class="subtitle">用挡板接住小球，击碎所有砖块！</p>
+            <div class="info-card">
+                <h3>🎯 游戏说明</h3>
+                <p>🖱️ 电脑：移动鼠标控制挡板</p>
+                <p>⌨️ 键盘：←→方向键控制挡板</p>
+                <p>📱 手机：滑动屏幕控制挡板</p>
+                <p>❤️ 初始3条生命，掉球扣1条</p>
+                <p>🏆 击碎所有砖块即可通关！</p>
+            </div>
+            <button id="startBtn" class="btn-start">🚀 开始游戏</button>
+            </div>
+        </div>
+        
+        <div id="gameOverScreen" class="overlay hidden">
+            <div class="fade-in" style="text-align:center">
+            <h1 style="color:#f87171">💔 游戏结束</h1>
+            <p class="subtitle">最终得分</p>
+            <p id="finalScore" class="final-score">0</p>
+            <button id="restartBtn" class="btn-restart">🔄 再来一局</button>
+            </div>
+        </div>
+        
+        <div id="winScreen" class="overlay hidden">
+            <div class="fade-in" style="text-align:center">
+            <h1 style="color:#facc15">🎉 恭喜通关！</h1>
+            <p class="subtitle">最终得分</p>
+            <p id="winScore" class="final-score" style="color:#4ade80">0</p>
+            <button id="playAgainBtn" class="btn-win">🎮 再玩一次</button>
+            </div>
+        </div>
+        
+        <div id="hud" class="hud hidden">
+            <div class="hud-item">⭐ 分数: <b id="score">0</b></div>
+            <div class="hud-item">❤️ 生命: <b id="lives">3</b></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const winScreen = document.getElementById('winScreen');
+        const hud = document.getElementById('hud');
+        const scoreEl = document.getElementById('score');
+        const livesEl = document.getElementById('lives');
+        const finalScoreEl = document.getElementById('finalScore');
+        const winScoreEl = document.getElementById('winScore');
+
+        let running = false, score = 0, lives = 3, particles = [], controlsEnabled = false;
+
+        const paddle = { w: 100, h: 14, x: 190, y: 600, speed: 8, dx: 0 };
+        const ball = { x: 240, y: 580, r: 8, speed: 5, dx: 4, dy: -4 };
+        const brickCfg = { rows: 6, cols: 8, w: 52, h: 20, pad: 6, offT: 60, offL: 18 };
+        const colors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6'];
+        let bricks = [];
+
+        function roundRect(x,y,w,h,r){
+            ctx.beginPath();
+            ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+            ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r);
+            ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h);
+            ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r);
+            ctx.quadraticCurveTo(x,y,x+r,y);
+            ctx.closePath();
+        }
+
+        function initBricks(){
+            bricks = [];
+            for(let r=0;r<brickCfg.rows;r++){
+                bricks[r]=[];
+                for(let c=0;c<brickCfg.cols;c++){
+                    bricks[r][c]={
+                        x:c*(brickCfg.w+brickCfg.pad)+brickCfg.offL,
+                        y:r*(brickCfg.h+brickCfg.pad)+brickCfg.offT,
+                        visible:true, color:colors[r]
+                    };
+                }
+            }
+        }
+
+        function makeParticles(x,y,color){
+            for(let i=0;i<8;i++){
+                particles.push({x,y,dx:(Math.random()-0.5)*8,dy:(Math.random()-0.5)*8,
+                    r:Math.random()*4+2,color,life:1});
+            }
+        }
+
+        function drawBackground(){
+            let g=ctx.createLinearGradient(0,0,0,640);
+            g.addColorStop(0,'#1e1b4b');g.addColorStop(1,'#312e81');
+            ctx.fillStyle=g;ctx.fillRect(0,0,480,640);
+            for(let i=0;i<20;i++){
+                ctx.beginPath();
+                ctx.arc((i*97)%480,(i*73)%640,1+i%3,0,Math.PI*2);
+                ctx.fillStyle=`rgba(255,255,255,${0.05+i%5*0.02})`;ctx.fill();
+            }
+        }
+
+        function drawBricks(){
+            bricks.forEach(row=>row.forEach(b=>{
+                if(!b.visible)return;
+                roundRect(b.x,b.y,brickCfg.w,brickCfg.h,4);ctx.fillStyle=b.color;ctx.fill();
+                roundRect(b.x+3,b.y+3,brickCfg.w-6,5,2);ctx.fillStyle='rgba(255,255,255,0.3)';ctx.fill();
+            }));
+        }
+
+        function drawPaddle(){
+            roundRect(paddle.x,paddle.y,paddle.w,paddle.h,7);
+            let g=ctx.createLinearGradient(paddle.x,paddle.y,paddle.x,paddle.y+paddle.h);
+            g.addColorStop(0,'#fff');g.addColorStop(1,'#e0e7ff');ctx.fillStyle=g;ctx.fill();
+        }
+
+        function drawBall(){
+            ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r+4,0,Math.PI*2);
+            ctx.fillStyle='rgba(254,240,138,0.3)';ctx.fill();
+            ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);
+            let g=ctx.createRadialGradient(ball.x-2,ball.y-2,0,ball.x,ball.y,ball.r);
+            g.addColorStop(0,'#fff');g.addColorStop(1,'#fef08a');ctx.fillStyle=g;ctx.fill();
+        }
+
+        function drawParticles(){
+            for(let i=particles.length-1;i>=0;i--){
+                let p=particles[i];
+                p.x+=p.dx;p.y+=p.dy;p.life-=0.02;
+                ctx.globalAlpha=p.life;
+                ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=p.color;ctx.fill();
+                if(p.life<=0)particles.splice(i,1);
+            }
+            ctx.globalAlpha=1;
+        }
+
+        function resetBall(){
+            ball.x=240;ball.y=580;ball.speed=5;
+            ball.dx=4*(Math.random()>0.5?1:-1);ball.dy=-4;
+            paddle.x=190;
+        }
+
+        function enableControls(){
+            if(controlsEnabled)return;
+            controlsEnabled=true;
+            document.addEventListener('keydown',e=>{
+                if(e.key==='ArrowLeft')paddle.dx=-paddle.speed;
+                if(e.key==='ArrowRight')paddle.dx=paddle.speed;
+            });
+            document.addEventListener('keyup',()=>paddle.dx=0);
+            canvas.addEventListener('mousemove',e=>{
+                let rect=canvas.getBoundingClientRect();
+                let sx=480/rect.width;
+                paddle.x=(e.clientX-rect.left)*sx-paddle.w/2;
+            });
+            canvas.addEventListener('touchmove',e=>{
+                e.preventDefault();
+                let rect=canvas.getBoundingClientRect();
+                let sx=480/rect.width;
+                paddle.x=(e.touches[0].clientX-rect.left)*sx-paddle.w/2;
+            },{passive:false});
+        }
+
+        function gameLoop(){
+            if(!running)return;
+            drawBackground();drawBricks();drawPaddle();drawBall();drawParticles();
+
+            paddle.x+=paddle.dx;
+            if(paddle.x<0)paddle.x=0;
+            if(paddle.x+paddle.w>480)paddle.x=480-paddle.w;
+
+            ball.x+=ball.dx;ball.y+=ball.dy;
+            if(ball.x+ball.r>480||ball.x-ball.r<0)ball.dx*=-1;
+            if(ball.y-ball.r<0)ball.dy*=-1;
+
+            if(ball.x>paddle.x&&ball.x<paddle.x+paddle.w&&
+               ball.y+ball.r>paddle.y&&ball.y+ball.r<paddle.y+paddle.h+10&&ball.dy>0){
+                let hit=(ball.x-paddle.x)/paddle.w;
+                let ang=(hit-0.5)*Math.PI*0.6;
+                ball.dx=ball.speed*Math.sin(ang);
+                ball.dy=-ball.speed*Math.cos(ang);
+                makeParticles(ball.x,ball.y,'#fff');
+            }
+
+            if(ball.y+ball.r>640){
+                lives--;livesEl.textContent=lives;
+                if(lives<=0){gameOver();return;}
+                resetBall();
+            }
+
+            let win=true;
+            bricks.forEach(row=>row.forEach(b=>{
+                if(!b.visible)return;
+                win=false;
+                if(ball.x>b.x&&ball.x<b.x+brickCfg.w&&ball.y>b.y&&ball.y<b.y+brickCfg.h){
+                    ball.dy*=-1;b.visible=false;score+=10;
+                    scoreEl.textContent=score;
+                    makeParticles(b.x+brickCfg.w/2,b.y+brickCfg.h/2,b.color);
+                    ball.speed+=0.02;
+                }
+            }));
+            if(win){winGame();return;}
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame(){
+            running=true;score=0;lives=3;particles=[];
+            scoreEl.textContent='0';livesEl.textContent='3';
+            initBricks();resetBall();
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            winScreen.classList.add('hidden');
+            hud.classList.remove('hidden');
+            gameLoop();
+        }
+
+        function gameOver(){
+            running=false;
+            finalScoreEl.textContent=score;
+            gameOverScreen.classList.remove('hidden');
+            hud.classList.add('hidden');
+        }
+
+        function winGame(){
+            running=false;
+            winScoreEl.textContent=score;
+            winScreen.classList.remove('hidden');
+            hud.classList.add('hidden');
+        }
+
+        document.getElementById('startBtn').addEventListener('click',()=>{
+            enableControls();
+            startGame();
+        });
+        document.getElementById('restartBtn').addEventListener('click',startGame);
+        document.getElementById('playAgainBtn').addEventListener('click',startGame);
+
+        drawBackground();
+    </script>
+</body>
+</html>
